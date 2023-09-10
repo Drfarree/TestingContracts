@@ -169,6 +169,28 @@ describe("LiquidityPool", function () {
         );
         expect(_tokens).to.equal(BigInt(tokens_to_swap + token_amount));
       });
+
+      it("Swap token for eth (not owner)", async function () {
+        tokens_to_swap = 1000;
+
+        await flToken.transfer(otherAccount.address, tokens_to_swap)
+
+        balance_be4 = await flToken.balanceOf(otherAccount);
+        const [_tokens_be4, _ether_be4] = await liquidityPool.getPoolBalance();
+
+        await flToken.connect(otherAccount).approve(liquidityPool.target, tokens_to_swap);
+        await liquidityPool.connect(otherAccount).swapTokensForETH(tokens_to_swap);
+
+        balance_after = await flToken.balanceOf(otherAccount);
+        const [_tokens, _ether] = await liquidityPool.getPoolBalance();
+
+        expect(balance_after).to.equal(balance_be4 - BigInt(tokens_to_swap));
+        expect(_tokens).to.equal(_tokens_be4 + BigInt(tokens_to_swap));
+        expect(_ether).to.be.lte(
+          await ethers.provider.getBalance(otherAccount.address)
+        );
+        expect(_tokens).to.equal(BigInt(tokens_to_swap + token_amount));
+      });
     });
 
     describe("Test refill function", function () {

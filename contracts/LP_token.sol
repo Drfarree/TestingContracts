@@ -1,24 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-/*
- ______                                           ________         __                           
- /      \                                         /        |       /  |                          
-/$$$$$$  | __   __   __   ______    ______        $$$$$$$$/______  $$ |   __   ______   _______  
-$$ \__$$/ /  | /  | /  | /      \  /      \          $$ | /      \ $$ |  /  | /      \ /       \ 
-$$      \ $$ | $$ | $$ | $$$$$$  |/$$$$$$  |         $$ |/$$$$$$  |$$ |_/$$/ /$$$$$$  |$$$$$$$  |
- $$$$$$  |$$ | $$ | $$ | /    $$ |$$ |  $$ |         $$ |$$ |  $$ |$$   $$<  $$    $$ |$$ |  $$ |
-/  \__$$ |$$ \_$$ \_$$ |/$$$$$$$ |$$ |__$$ |         $$ |$$ \__$$ |$$$$$$  \ $$$$$$$$/ $$ |  $$ |
-$$    $$/ $$   $$   $$/ $$    $$ |$$    $$/          $$ |$$    $$/ $$ | $$  |$$       |$$ |  $$ |
- $$$$$$/   $$$$$/$$$$/   $$$$$$$/ $$$$$$$/           $$/  $$$$$$/  $$/   $$/  $$$$$$$/ $$/   $$/ 
-                                  $$ |                                                           
-                                  $$ |                                                           
-                                  $$/                                                            
-*/
-
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+/**
+ * @title LiquidityPool
+ * @dev A contract to manage a simple liquidity pool for token and ETH swaps.
+ */
 contract LiquidityPool {
     address private owner;
     IERC20 private token;
@@ -31,6 +20,9 @@ contract LiquidityPool {
         ethBalance = address(this).balance;
     }
 
+    /**
+     * @dev Modifier to restrict access to only the owner of the contract.
+     */
     modifier onlyOwner() {
         require(
             msg.sender == owner,
@@ -60,8 +52,8 @@ contract LiquidityPool {
     
     
     /**
-     * @dev Inicializa la liquidez del pool, depositando tokens y ETH en el contrato. msg.value = ETH unit
-     * @param initialTokenAmount Cantidad de tokens a depositar.
+     * @dev Initialize the liquidity pool by depositing tokens and ETH into the contract.
+     * @param initialTokenAmount The amount of tokens to deposit.
      */
     function initializePool(uint256 initialTokenAmount) onlyOwner external payable {
         require(tokenBalance == 0 && ethBalance == 0, "Pool already initialized");
@@ -90,9 +82,8 @@ contract LiquidityPool {
     }
 
     /**
-     * @dev Rellena la liquidez del pool en cualquier momento.
-     * @param tokenAmount Cantidad de tokens a depositar.
-
+     * @dev Refill the liquidity pool at any time.
+     * @param tokenAmount The amount of tokens to deposit.
      */
     function refillLiquidity(uint256 tokenAmount) external payable onlyOwner {
         require(tokenAmount > 0, "Token amount must be greater than zero");
@@ -112,10 +103,9 @@ contract LiquidityPool {
         emit LiquidityRefilled(tokenAmount, msg.value);
     }
 
-    /**
-     * @dev Permite intercambiar ETH por token.
+     /**
+     * @dev Allow swapping ETH for tokens.
      */
-
     function swapETHForTokens() external payable {
         require(msg.value > 0, "ETH amount must be greater than zero");
         require(ethBalance > 0, "No liquidity in the pool");
@@ -136,8 +126,8 @@ contract LiquidityPool {
     }
 
     /**
-     * @dev Permite intercambiar tokens por ETH.
-     * @param tokenAmount Cantidad de tokens a intercambiar.
+     * @dev Allow swapping tokens for ETH.
+     * @param tokenAmount The amount of tokens to swap.
      */
     function swapTokensForETH(uint256 tokenAmount) external {
         require(token.balanceOf(msg.sender) >= tokenAmount,"Insufficient tokens");
@@ -161,8 +151,8 @@ contract LiquidityPool {
     }
 
     /**
-     * @dev Permite al owner retirar ETH del contrato.
-     * @param amount Cantidad de ETH a retirar. --> amount = gwei
+     * @dev Allows the owner to withdraw ETH from the contract.
+     * @param amount Amount of ETH to withdraw. --> amount = gwei
      */
     function withdrawETH(uint256 amount) external onlyOwner {
         uint256 amountInGwei = amount * 1e9;  // Convertir el monto a Gwei
@@ -181,8 +171,8 @@ contract LiquidityPool {
 
 
     /**
-     * @dev Permite al owner retirar tokens del contrato.
-     * @param amount Cantidad de tokens a retirar.
+     * @dev Allows the owner to withdraw tokens from the contract.
+     * @param amount Amount of tokens to withdraw.
      */
     function withdrawToken(uint256 amount) external onlyOwner {
         require(token.balanceOf(address(this)) >= amount, "Insufficient token balance");
@@ -198,16 +188,16 @@ contract LiquidityPool {
     }
 
     /**
-     * @dev Obtiene el saldo actual del pool.
-     * @return Saldo de tokens y saldo de ETH en Gwei.
+     * @dev Get the current balance of the pool.
+     * @return Token balance and ETH balance in Gwei.
      */
     function getPoolBalance() external view returns (uint256, uint256) {
         return (tokenBalance, ethBalance);
     }
 
     /**
-     * @dev Obtiene el precio de la pool (tokens/ETH).
-     * @return Precio de la pool en Gwei.
+     * @dev Get the price of the pool (tokens/ETH).
+     * @return Pool price in Gwei.
      */
     function getTokenPrice() public view returns (uint256) {
         require(ethBalance > 0 && tokenBalance > 0, "Pool not initialized");
