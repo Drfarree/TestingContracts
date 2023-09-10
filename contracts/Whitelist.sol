@@ -32,6 +32,12 @@ contract ControlWhitelist {
         _;
     }
 
+    modifier onlyOwnerContract {
+        require (msg.sender == _owner || tx.origin == _owner, "Only the owner or owner contracts can call this function");
+        _;
+    }
+
+
     // @dev: User is added to whitelist
     function addWhitelistUser(string memory _projectName, address _user) onlyOwner public {
         Project storage project = projects[_projectName];
@@ -50,7 +56,7 @@ contract ControlWhitelist {
     }
 
     // @dev: This function is called by the Owner to check projects whitelist.
-    function isInWhiteListMaster(string memory _projectName, address _address) onlyOwner public view returns (bool) {
+    function isInWhiteListMaster(string memory _projectName, address _address) onlyOwnerContract public view returns (bool) {
       Project storage project = projects[_projectName];
       for (uint i = 0; i < project.whiteList.length; i++) {
         if (project.whiteList[i] == _address) {

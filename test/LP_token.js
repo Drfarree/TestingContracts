@@ -170,5 +170,108 @@ describe("LiquidityPool", function () {
         expect(_tokens).to.equal(BigInt(tokens_to_swap + token_amount));
       });
     });
+
+    describe("Test refill function", function () {
+      it("Should add more eth and token to swap pool", async function () {
+        const { flToken, liquidityPool, owner, otherAccount } =
+          await loadFixture(deployContractsFixture);
+        const token_amount = 100;
+        const eth_amount = "1.0";
+        const eth_amount_wei = ethers.parseEther(eth_amount);
+
+        const token_amount_refill = 200;
+        const eth_amount_refill = "0.5";
+        const eth_amount_refill_wei = ethers.parseEther(eth_amount_refill);
+
+        await flToken
+          .connect(owner)
+          .approve(liquidityPool.target, token_amount);
+
+        await expect(
+          liquidityPool
+            .connect(owner)
+            .initializePool(token_amount, { value: eth_amount_wei })
+        );
+
+        const [_tokensA, _etherA] = await liquidityPool.getPoolBalance();
+
+        await flToken
+          .connect(owner)
+          .approve(liquidityPool.target, token_amount_refill);
+
+        await liquidityPool.refillLiquidity(token_amount_refill, {
+          value: eth_amount_refill_wei,
+        });
+
+        const [_tokens, _ether] = await liquidityPool.getPoolBalance();
+
+        expect(_tokens).to.equal(
+          BigInt(token_amount) + BigInt(token_amount_refill)
+        );
+
+        expect(_ether).to.equal(
+          ethers.parseUnits(eth_amount, 9) +
+            ethers.parseUnits(eth_amount_refill, 9)
+        );
+      });
+    });
+
+    describe("Test withdraw functions", function () {
+      let token_amount;
+      let eth_amount;
+      let otherAccount;
+      let flToken;
+      let liquidityPool;
+      let owner;
+
+      beforeEach(async function () {
+        const {
+          flToken: _flToken,
+          owner: _owner,
+          otherAccount: _otherAccount,
+          liquidityPool: _liquidityPool,
+        } = await loadFixture(deployContractsFixture);
+
+        flToken = _flToken;
+        owner = _owner;
+        otherAccount = _otherAccount;
+        eth_amount = "10.0";
+        token_amount = 10000;
+        liquidityPool = _liquidityPool;
+
+        const eth_amount_wei = ethers.parseEther(eth_amount);
+        const eth_amount_gwei = ethers.parseUnits(eth_amount, 9);
+
+        await flToken
+          .connect(owner)
+          .approve(liquidityPool.target, token_amount);
+
+        await liquidityPool.connect(owner).initializePool(token_amount, {
+          value: eth_amount_wei,
+        });
+      });
+
+      it("Should withdraw tokens from pool to owner wallet", async function () {
+        const token_withdraw = 500;
+        const [_tokens, _ether] = await liquidityPool.getPoolBalance();
+
+        expect(_tokens).to.equal(token_amount);
+
+        await liquidityPool.withdrawToken(token_withdraw);
+
+        const [_tokensAfter, _etherAfter] =
+          await liquidityPool.getPoolBalance();
+
+        expect(_tokensAfter).to.equal(BigInt(_tokens) - BigInt(token_withdraw));
+      });
+
+      it("Just owner can withdraw", async function () {
+        const token_withdraw = 100;
+
+        await expect(
+          liquidityPool.connect(otherAccount).withdrawToken(token_withdraw)
+        ).to.be.reverted;
+      });
+    });
   });
 });
