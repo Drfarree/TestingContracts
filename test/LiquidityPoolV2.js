@@ -5,34 +5,35 @@ const {
 const { ethers } = require("hardhat");
 const { eth } = require("web3");
 
-describe("LiquidityPool", function () {
+describe("LiquidityPool (n decimals)", function () {
   async function deployContractsFixture() {
     const [owner, otherAccount] = await ethers.getSigners();
 
-    const FLToken = await ethers.getContractFactory("FLToken");
+    const FLToken = await ethers.getContractFactory("FLTokenV2");
     const flToken = await FLToken.deploy(
-      "Token",
-      "MTK",
+      "Pikake",
+      "PK",
       1000000,
       owner.address,
-      0
+      18
     );
 
-    const LiquidityPool = await ethers.getContractFactory("LiquidityPool");
+    const LiquidityPool = await ethers.getContractFactory("LiquidityPoolV2");
     const liquidityPool = await LiquidityPool.deploy(flToken.target);
 
-    return { flToken, liquidityPool, owner, otherAccount };
+    const decimals = await flToken.decimals();
+
+    return { flToken, liquidityPool, owner, otherAccount, decimals };
   }
 
   describe("Initialize liquidity pool", function () {
     it("Should add liquidity on LP", async function () {
-      const { flToken, liquidityPool, owner, otherAccount } = await loadFixture(
-        deployContractsFixture
-      );
-      const token_amount = 100000;
+      const { flToken, liquidityPool, owner, otherAccount, decimals } =
+        await loadFixture(deployContractsFixture);
+      const token_amount = BigInt(100000) * BigInt(10) ** decimals;
       const eth_amount = "10.0";
       const eth_amount_wei = ethers.parseEther(eth_amount);
-      const eth_amount_gwei = ethers.parseUnits(eth_amount, 9);
+
       // owner token balance before deposit on pool
       n_owner_token_before = await flToken.balanceOf(owner);
 
@@ -44,28 +45,28 @@ describe("LiquidityPool", function () {
         value: eth_amount_wei,
       });
 
-      // _ether gwei units 10⁹
       const [_tokens, _ether] = await liquidityPool.getPoolBalance();
-      // tokenPrice en gwei
+
       const tokenPrice = await liquidityPool.getTokenPrice();
 
       expect(_tokens).to.equal(token_amount);
+      expect(_ether).to.equal(eth_amount_wei);
 
-      expect(_ether).to.equal(eth_amount_gwei);
-      expect(tokenPrice).to.equal(eth_amount_gwei / BigInt(token_amount));
+      const expectedTokenPrice =
+        (eth_amount_wei * BigInt(10) ** decimals) / token_amount;
+
+      expect(tokenPrice).to.equal(expectedTokenPrice.toString());
+
       // owner token balance after deposit
       n_owner_token_after = await flToken.balanceOf(owner);
 
-      expect(n_owner_token_after).to.equal(
-        n_owner_token_before - BigInt(token_amount)
-      );
+      expect(n_owner_token_after).to.equal(n_owner_token_before - token_amount);
     });
 
     it("Just owner can initializePool", async function () {
-      const { flToken, liquidityPool, owner, otherAccount } = await loadFixture(
-        deployContractsFixture
-      );
-      const token_amount = 100000;
+      const { flToken, liquidityPool, owner, otherAccount, decimals } =
+        await loadFixture(deployContractsFixture);
+      const token_amount = BigInt(100000) * BigInt(10) ** decimals;
       const transferAmount = token_amount;
       const eth_amount = "10.0";
       const eth_amount_wei = ethers.parseEther(eth_amount);
@@ -94,6 +95,7 @@ describe("LiquidityPool", function () {
       let flToken;
       let liquidityPool;
       let owner;
+      let decimals;
 
       beforeEach(async function () {
         const {
@@ -101,18 +103,19 @@ describe("LiquidityPool", function () {
           owner: _owner,
           otherAccount: _otherAccount,
           liquidityPool: _liquidityPool,
+          decimals: _decimals,
         } = await loadFixture(deployContractsFixture);
 
         flToken = _flToken;
         owner = _owner;
+        decimals = _decimals;
         otherAccount = _otherAccount;
         eth_amount = "10.0";
-        token_amount = 100000;
+        // deposit 100000 with n decimals
+        token_amount = BigInt(100000) * BigInt(10) ** decimals;
         liquidityPool = _liquidityPool;
 
         const eth_amount_wei = ethers.parseEther(eth_amount);
-        const eth_amount_gwei = ethers.parseUnits(eth_amount, 9);
-
         await flToken
           .connect(owner)
           .approve(liquidityPool.target, token_amount);
@@ -133,7 +136,7 @@ describe("LiquidityPool", function () {
         const _tokenPrice = await liquidityPool.getTokenPrice();
 
         const _token_amount =
-          ethers.formatEther(wei_to_buy) / ethers.formatUnits(_tokenPrice, 9);
+          (wei_to_buy * BigInt(10) ** decimals) / _tokenPrice;
 
         await liquidityPool
           .connect(otherAccount)
@@ -141,17 +144,11 @@ describe("LiquidityPool", function () {
 
         token_balance = await flToken.balanceOf(otherAccount);
 
-        expect(BigInt(_token_amount)).to.equal(token_balance);
-
-        const [_tokens, _ether] = await liquidityPool.getPoolBalance();
-
-        expect(_ether).to.equal(
-          ethers.parseUnits(eth_amount, 9) + ethers.parseUnits(eth_to_buy, 9)
-        );
+        expect(_token_amount).to.equal(token_balance);
       });
 
       it("Swap tokens for eth", async function () {
-        tokens_to_swap = 1000;
+        tokens_to_swap = BigInt(1000) * BigInt(10) ** decimals;
 
         balance_be4 = await flToken.balanceOf(owner);
         const [_tokens_be4, _ether_be4] = await liquidityPool.getPoolBalance();
@@ -162,46 +159,51 @@ describe("LiquidityPool", function () {
         balance_after = await flToken.balanceOf(owner);
         const [_tokens, _ether] = await liquidityPool.getPoolBalance();
 
-        expect(balance_after).to.equal(balance_be4 - BigInt(tokens_to_swap));
-        expect(_tokens).to.equal(_tokens_be4 + BigInt(tokens_to_swap));
+        expect(balance_after).to.equal(balance_be4 - tokens_to_swap);
+        expect(_tokens).to.equal(_tokens_be4 + tokens_to_swap);
+
         expect(_ether).to.be.lte(
           await ethers.provider.getBalance(owner.address)
         );
-        expect(_tokens).to.equal(BigInt(tokens_to_swap + token_amount));
+        expect(_tokens).to.equal(tokens_to_swap + token_amount);
       });
 
       it("Swap token for eth (not owner)", async function () {
-        tokens_to_swap = 1000;
+        tokens_to_swap = BigInt(1000) * BigInt(10) ** decimals;
 
-        await flToken.transfer(otherAccount.address, tokens_to_swap)
+        await flToken.transfer(otherAccount.address, tokens_to_swap);
 
         balance_be4 = await flToken.balanceOf(otherAccount);
         const [_tokens_be4, _ether_be4] = await liquidityPool.getPoolBalance();
 
-        await flToken.connect(otherAccount).approve(liquidityPool.target, tokens_to_swap);
-        await liquidityPool.connect(otherAccount).swapTokensForETH(tokens_to_swap);
+        await flToken
+          .connect(otherAccount)
+          .approve(liquidityPool.target, tokens_to_swap);
+        await liquidityPool
+          .connect(otherAccount)
+          .swapTokensForETH(tokens_to_swap);
 
         balance_after = await flToken.balanceOf(otherAccount);
         const [_tokens, _ether] = await liquidityPool.getPoolBalance();
 
-        expect(balance_after).to.equal(balance_be4 - BigInt(tokens_to_swap));
-        expect(_tokens).to.equal(_tokens_be4 + BigInt(tokens_to_swap));
+        expect(balance_after).to.equal(balance_be4 - tokens_to_swap);
+        expect(_tokens).to.equal(_tokens_be4 + tokens_to_swap);
         expect(_ether).to.be.lte(
           await ethers.provider.getBalance(otherAccount.address)
         );
-        expect(_tokens).to.equal(BigInt(tokens_to_swap + token_amount));
+        expect(_tokens).to.equal(tokens_to_swap + token_amount);
       });
     });
 
     describe("Test refill function", function () {
       it("Should add more eth and token to swap pool", async function () {
-        const { flToken, liquidityPool, owner, otherAccount } =
+        const { flToken, liquidityPool, owner, otherAccount, decimals } =
           await loadFixture(deployContractsFixture);
-        const token_amount = 100;
+        const token_amount = BigInt(100) * BigInt(10) ** decimals;
         const eth_amount = "1.0";
         const eth_amount_wei = ethers.parseEther(eth_amount);
 
-        const token_amount_refill = 200;
+        const token_amount_refill = BigInt(200) * BigInt(10) ** decimals;
         const eth_amount_refill = "0.5";
         const eth_amount_refill_wei = ethers.parseEther(eth_amount_refill);
 
@@ -227,14 +229,9 @@ describe("LiquidityPool", function () {
 
         const [_tokens, _ether] = await liquidityPool.getPoolBalance();
 
-        expect(_tokens).to.equal(
-          BigInt(token_amount) + BigInt(token_amount_refill)
-        );
+        expect(_tokens).to.equal(token_amount + token_amount_refill);
 
-        expect(_ether).to.equal(
-          ethers.parseUnits(eth_amount, 9) +
-            ethers.parseUnits(eth_amount_refill, 9)
-        );
+        expect(_ether).to.equal(eth_amount_wei + eth_amount_refill_wei);
       });
     });
 
@@ -245,6 +242,7 @@ describe("LiquidityPool", function () {
       let flToken;
       let liquidityPool;
       let owner;
+      let decimals;
 
       beforeEach(async function () {
         const {
@@ -252,17 +250,18 @@ describe("LiquidityPool", function () {
           owner: _owner,
           otherAccount: _otherAccount,
           liquidityPool: _liquidityPool,
+          decimals: _decimals,
         } = await loadFixture(deployContractsFixture);
 
         flToken = _flToken;
         owner = _owner;
         otherAccount = _otherAccount;
+        decimals = _decimals
         eth_amount = "10.0";
-        token_amount = 10000;
+        token_amount = BigInt(10000) * BigInt(10)**decimals;
         liquidityPool = _liquidityPool;
 
         const eth_amount_wei = ethers.parseEther(eth_amount);
-        const eth_amount_gwei = ethers.parseUnits(eth_amount, 9);
 
         await flToken
           .connect(owner)
@@ -274,7 +273,7 @@ describe("LiquidityPool", function () {
       });
 
       it("Should withdraw tokens from pool to owner wallet", async function () {
-        const token_withdraw = 500;
+        const token_withdraw = BigInt(500) * BigInt(10)**decimals;;
         const [_tokens, _ether] = await liquidityPool.getPoolBalance();
 
         expect(_tokens).to.equal(token_amount);
@@ -284,11 +283,11 @@ describe("LiquidityPool", function () {
         const [_tokensAfter, _etherAfter] =
           await liquidityPool.getPoolBalance();
 
-        expect(_tokensAfter).to.equal(BigInt(_tokens) - BigInt(token_withdraw));
+        expect(_tokensAfter).to.equal(_tokens - token_withdraw);
       });
 
       it("Just owner can withdraw", async function () {
-        const token_withdraw = 100;
+        const token_withdraw = BigInt(100) * BigInt(10)**decimals;;
 
         await expect(
           liquidityPool.connect(otherAccount).withdrawToken(token_withdraw)

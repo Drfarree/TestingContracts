@@ -4,18 +4,18 @@ const {
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const { ethers } = require("hardhat");
 
-describe("NodeManager", function () {
+describe("NodeManager (n decimals)", function () {
   async function deployContractsFixture() {
     const [owner, otherAccount] = await ethers.getSigners();
 
     // Deploy token FLToken
-    const FLToken = await ethers.getContractFactory("FLToken");
+    const FLToken = await ethers.getContractFactory("FLTokenV2");
     const flToken = await FLToken.deploy(
-      "My Token",
-      "MTK",
+      "Pikake",
+      "PK",
       100000,
       owner.address,
-      0
+      18
     );
 
     // Deploy whitelist SC
@@ -31,7 +31,9 @@ describe("NodeManager", function () {
 
     // console.log("NodeManager deployed at:", nodeManager.target); // Imprime la dirección de NodeManager
 
-    return { flToken, nodeManager, owner, otherAccount, whitelist };
+    const decimals = await flToken.decimals();
+
+    return { flToken, nodeManager, owner, otherAccount, whitelist, decimals };
   }
 
   describe("Deployment", function () {
@@ -40,7 +42,7 @@ describe("NodeManager", function () {
         deployContractsFixture
       );
 
-      expect(await flToken.name()).to.equal("My Token");
+      expect(await flToken.name()).to.equal("Pikake");
       expect(await nodeManager.owner()).to.equal(await flToken.owner());
       expect(await nodeManager.checkFullBalance()).to.equal(0);
     });
@@ -48,11 +50,10 @@ describe("NodeManager", function () {
 
   describe("Test deposit function", function () {
     it("Should deposit tokens on the contract by Owner", async function () {
-      const { flToken, nodeManager, owner, otherAccount } = await loadFixture(
-        deployContractsFixture
-      );
+      const { flToken, nodeManager, owner, otherAccount, decimals } =
+        await loadFixture(deployContractsFixture);
 
-      deposit_balance = 1000;
+      deposit_balance = BigInt(1000) * BigInt(10) ** decimals;
 
       await flToken.connect(owner).approve(nodeManager.target, deposit_balance);
 
@@ -65,11 +66,10 @@ describe("NodeManager", function () {
 
     it("Should deposit tokens by other account (not owner)", async function () {
       it("Should deposit tokens on the contract by Owner", async function () {
-        const { flToken, nodeManager, owner, otherAccount } = await loadFixture(
-          deployContractsFixture
-        );
+        const { flToken, nodeManager, owner, otherAccount, decimals } =
+          await loadFixture(deployContractsFixture);
 
-        deposit_balance = 500;
+        deposit_balance = BigInt(500) * BigInt(10) ** decimals;
 
         await flToken.connect(owner).transfer(otherAccount, deposit_balance);
 
@@ -93,6 +93,7 @@ describe("NodeManager", function () {
     let owner;
     let otherAccount;
     let whitelist;
+    let decimals;
 
     beforeEach(async function () {
       const {
@@ -101,6 +102,7 @@ describe("NodeManager", function () {
         otherAccount: _otherAccount,
         nodeManager: _nodeManager,
         whitelist: _whitelist,
+        decimals: _decimals
       } = await loadFixture(deployContractsFixture);
 
       flToken = _flToken;
@@ -108,7 +110,8 @@ describe("NodeManager", function () {
       otherAccount = _otherAccount;
       nodeManager = _nodeManager;
       whitelist = _whitelist;
-      deposit_amount = 10000;
+      decimals = _decimals;
+      deposit_amount = BigInt(10000) * BigInt(10) ** decimals;;
 
       await flToken.connect(owner).approve(nodeManager.target, deposit_amount);
       await nodeManager.connect(owner).deposit(deposit_amount);
@@ -120,7 +123,7 @@ describe("NodeManager", function () {
 
     it("Should transfer tokens to user", async function () {
       projectID = 1;
-      transfer_amount = 100;
+      transfer_amount = BigInt(100) * BigInt(10) ** decimals;;
       // add user to whitelist
       await whitelist.connect(owner).addWhitelistUser(projectID, otherAccount);
 
@@ -132,7 +135,7 @@ describe("NodeManager", function () {
 
       balanceAfter = await nodeManager.checkFullBalance();
 
-      expect(balanceAfter).to.equal(balanceBefore - BigInt(transfer_amount));
+      expect(balanceAfter).to.equal(balanceBefore - transfer_amount);
 
       walletBalance = await flToken
         .connect(otherAccount)
@@ -143,7 +146,7 @@ describe("NodeManager", function () {
 
     it("Shouldn't transfer to user that is not on WL", async function () {
       projectID = 1;
-      transfer_amount = 100;
+      transfer_amount = BigInt(100) * BigInt(10) ** decimals;;
 
       balanceBefore = await nodeManager.checkFullBalance();
 
@@ -164,17 +167,17 @@ describe("NodeManager", function () {
       expect(walletBalance).to.equal(0);
     });
 
-    it ("Just owner can call this function", async function () {
-        projectID = 12
-        transfer_amount = 100
+    it("Just owner can call this function", async function () {
+      projectID = 12;
+      transfer_amount = BigInt(100) * BigInt(10) ** decimals;;
 
-        await whitelist.connect(owner).addWhitelistUser(projectID, otherAccount);
+      await whitelist.connect(owner).addWhitelistUser(projectID, otherAccount);
 
-        await expect(
-            nodeManager
-              .connect(otherAccount)
-              .transfer(otherAccount, transfer_amount, projectID)
-          ).to.be.revertedWith("Only owner can call this function.");
-    })
+      await expect(
+        nodeManager
+          .connect(otherAccount)
+          .transfer(otherAccount, transfer_amount, projectID)
+      ).to.be.revertedWith("Only owner can call this function.");
+    });
   });
 });
