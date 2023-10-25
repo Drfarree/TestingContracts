@@ -5,28 +5,51 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
+ * @title IERC20Extended
+ * @dev Extends the ERC-20 standard with an additional 'decimals' function to get
+ * the number of decimal places for a token.
+ */
+
+abstract contract IERC20Extented is IERC20 {
+    /**
+     * @dev Get the number of decimal places for the token.
+     * @return The number of decimal places.
+     */
+    function decimals() public virtual view returns (uint8); 
+}
+
+/**
  * @title LiquidityPool
  * @dev A contract to manage a simple liquidity pool for token and ETH swaps.
  */
-contract LiquidityPool {
-    address private owner;
-    IERC20 private token;
+
+contract LPImplementation {
+    address public owner;
+    IERC20Extented public token;
     uint256 public tokenBalance;
     uint256 public ethBalance;
+    uint8 public tokenDecimals;
 
-    constructor(IERC20 _tokenAddress) {
-        owner = msg.sender;
+    /**
+     * @dev Constructor to initialize the liquidity pool.
+     * @param _tokenAddress The address of the ERC20 token to use in the pool.
+     * @param _owner The address of the owner (the user who creates the pool).
+     */
+    constructor(IERC20Extented _tokenAddress, address _owner) {
+        owner = _owner;
         token = _tokenAddress;
         ethBalance = address(this).balance;
+        tokenDecimals = token.decimals();
     }
+
 
     /**
      * @dev Modifier to restrict access to only the owner of the contract.
      */
     modifier onlyOwner() {
         require(
-            msg.sender == owner,
-            "Only the contract owner can call this function"
+            owner == msg.sender,
+            "Only the owner or owner contracts can call this function"
         );
         _;
     }
@@ -62,22 +85,17 @@ contract LiquidityPool {
         require(msg.value > 0, "ETH amount must be greater than zero");
         require(token.balanceOf(msg.sender) >= initialTokenAmount, "Insufficient tokens");
 
-        // Aprobar la transferencia de tokens desde el usuario al contrato de la pool de liquidez
-        token.approve(address(this), initialTokenAmount);
 
-        // Calcular el precio inicial en Gwei
-        uint256 initialPrice = (msg.value * 1e9) / initialTokenAmount;
+        uint256 initialPrice = (msg.value * 10**tokenDecimals) / initialTokenAmount;
 
-        // Transferir tokens al contrato de la pool de liquidez
+        // Transfer tokens to the liquidity pool contract
         token.transferFrom(msg.sender, address(this), initialTokenAmount);
 
-        // Actualizar los saldos de tokens y ETH en gwei
+        // Update token and ETH balances 
         tokenBalance = initialTokenAmount;
+        ethBalance = msg.value;
 
-        //El 1e9 sirve para que el ethBalance este en gwei
-        ethBalance = msg.value/1e9;
-
-        // Emitir un evento para indicar que la pool ha sido inicializada
+        // Emit an event to indicate that the pool has been initialized
         emit PoolInitialized(initialTokenAmount, msg.value, initialPrice);
     }
 
@@ -89,17 +107,15 @@ contract LiquidityPool {
         require(tokenAmount > 0, "Token amount must be greater than zero");
         require(msg.value > 0, "ETH amount must be greater than zero");
 
-        // Aprobar la transferencia de tokens desde el usuario al contrato de la pool de liquidez
-        token.approve(address(this), tokenAmount);
 
-        // Transferir tokens al contrato de la pool de liquidez
+        // Transfer tokens to the liquidity pool contract
         token.transferFrom(msg.sender, address(this), tokenAmount);
 
-        // Actualizar los saldos de tokens y ETH
+        // Update token and ETH balances
         tokenBalance += tokenAmount;
-        ethBalance += msg.value/1e9;
+        ethBalance += msg.value;
 
-        // Emitir un evento para indicar que se ha rellenado la liquidez
+        // Emit an event to indicate that liquidity has been refilled
         emit LiquidityRefilled(tokenAmount, msg.value);
     }
 
@@ -110,18 +126,17 @@ contract LiquidityPool {
         require(msg.value > 0, "ETH amount must be greater than zero");
         require(ethBalance > 0, "No liquidity in the pool");
 
-        // Calcular la cantidad de tokens a transferir en Gwei
-        // msg.value = wei --> parseamos a gwei y para calcular el amount dividimos por el precio en gwei
-        uint256 tokenAmount = (msg.value / 1e9) / getTokenPrice();
+        // Calculate the amount of tokens to transfer
+        uint256 tokenAmount = (msg.value * tokenBalance) / ethBalance;
 
-        // Transferir tokens al usuario
+        // Transfer tokens to the user
         token.transfer(msg.sender, tokenAmount);
 
-        // Actualizar los saldos de tokens y ETH
+        // Update token and ETH balances
         tokenBalance -= tokenAmount;
-        ethBalance += msg.value/1e9;
+        ethBalance += msg.value;
 
-        // Emitir un evento para indicar que se ha realizado el intercambio
+        // Emit an event to indicate that the swap has been completed
         emit SwapETHForTokens(msg.sender, msg.value, tokenAmount);
     }
 
@@ -130,66 +145,29 @@ contract LiquidityPool {
      * @param tokenAmount The amount of tokens to swap.
      */
     function swapTokensForETH(uint256 tokenAmount) external {
-        require(token.balanceOf(msg.sender) >= tokenAmount,"Insufficient tokens");
+        require(token.balanceOf(msg.sender) >= tokenAmount, "Insufficient tokens");
         require(ethBalance > 0, "No liquidity in the pool");
 
-        // Calcular la cantidad de ETH a transferir en Gwei
-        uint256 ethAmount = tokenAmount * getTokenPrice();
+        // Calculate the amount of ETH to transfer
+        uint256 ethAmount = (tokenAmount * ethBalance) / tokenBalance;
 
-        // Transferir tokens al contrato de la pool de liquidez
+        // Transfer tokens to the liquidity pool contract
         token.transferFrom(msg.sender, address(this), tokenAmount);
 
-        // Transferir ETH al usuario
-        payable(msg.sender).transfer(ethAmount*1e9);
+        // Transfer ETH to the user
+        payable(msg.sender).transfer(ethAmount);
 
-        // Actualizar los saldos de tokens y ETH
+        // Update token and ETH balances
         tokenBalance += tokenAmount;
         ethBalance -= ethAmount;
 
-        // Emitir un evento para indicar que se ha realizado el intercambio
+        // Emit an event to indicate that the swap has been completed
         emit SwapTokensForETH(msg.sender, tokenAmount, ethAmount);
     }
 
     /**
-     * @dev Allows the owner to withdraw ETH from the contract.
-     * @param amount Amount of ETH to withdraw. --> amount = gwei
-     */
-    function withdrawETH(uint256 amount) external onlyOwner {
-        uint256 amountInGwei = amount * 1e9;  // Convertir el monto a Gwei
-
-        require(ethBalance >= amount, "Insufficient ETH balance");
-
-        // Transferir ETH al propietario
-        payable(owner).transfer(amountInGwei);
-
-        // Actualizar el saldo de ETH
-        ethBalance -= amount;
-
-        // Emitir un evento para indicar que se ha retirado ETH
-        emit ETHWithdrawn(owner, amountInGwei);
-    }
-
-
-    /**
-     * @dev Allows the owner to withdraw tokens from the contract.
-     * @param amount Amount of tokens to withdraw.
-     */
-    function withdrawToken(uint256 amount) external onlyOwner {
-        require(token.balanceOf(address(this)) >= amount, "Insufficient token balance");
-
-        // Transferir tokens al owner
-        token.transfer(msg.sender, amount);
-
-        // Actualizar el saldo de tokens
-        tokenBalance -= amount;
-
-        // Emitir un evento para indicar que se ha retirado tokens
-        emit TokenWithdrawn(msg.sender, amount);
-    }
-
-    /**
      * @dev Get the current balance of the pool.
-     * @return Token balance and ETH balance in Gwei.
+     * @return Token balance and ETH balance.
      */
     function getPoolBalance() external view returns (uint256, uint256) {
         return (tokenBalance, ethBalance);
@@ -197,14 +175,18 @@ contract LiquidityPool {
 
     /**
      * @dev Get the price of the pool (tokens/ETH).
-     * @return Pool price in Gwei.
+     * @return Pool price.
      */
     function getTokenPrice() public view returns (uint256) {
         require(ethBalance > 0 && tokenBalance > 0, "Pool not initialized");
 
-        // Calcular el precio de la pool (tokens/ETH) en Gwei
-        uint256 poolPrice = (ethBalance) / tokenBalance;
+        // Calculate the price of the pool (tokens/ETH)
+        uint256 poolPrice = (ethBalance * 10**tokenDecimals) / tokenBalance;
 
         return poolPrice;
+    }
+
+    function getTokenAddress() public view returns (address) {
+        return address(token);
     }
 }
