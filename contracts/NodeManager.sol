@@ -4,11 +4,10 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract NodeManager {
-    IERC20 private myToken;
+    IERC20 public myToken;
     address public owner;
     uint256 private totalDepositedTokens;
     mapping (address => uint256) public balances;
-    address private whitelistContract;
 
     // Estructura para almacenar los porcentajes asociados a las direcciones
     struct UserShare {
@@ -79,5 +78,9 @@ contract NodeManager {
         balances[msg.sender] -= tokensToClaim;
 
         myToken.transfer(msg.sender, tokensToClaim);
+    }
+
+    function tokenDistributed() public view returns (IERC20) {
+        return myToken;
     }
 }
