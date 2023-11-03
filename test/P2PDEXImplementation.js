@@ -236,12 +236,184 @@ describe("P2PDEX implementation", function () {
       it("Should create buy offer by not a owner address", async function () {
         eth_amount = "0.1";
         eth_amount_wei = ethers.parseEther(eth_amount);
-        await p2pdex.connect(otherAccount).createOfferBuyTokens({ value: eth_amount_wei });
+        await p2pdex
+          .connect(otherAccount)
+          .createOfferBuyTokens({ value: eth_amount_wei });
         [seller, tokenAmount, etherAmount, status] =
-        await p2pdex.getOfferBuyTokensById(0);
+          await p2pdex.getOfferBuyTokensById(0);
 
-        expect(seller).to.equal(otherAccount.address)
-        expect(etherAmount).to.equal(eth_amount_wei)
+        expect(seller).to.equal(otherAccount.address);
+        expect(etherAmount).to.equal(eth_amount_wei);
+      });
+
+      it("Shouldn't create a offer with 0 amount", async function () {
+        eth_amount = "0";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await expect(
+          p2pdex.createOfferBuyTokens({ value: eth_amount_wei })
+        ).to.be.revertedWith("Invalid offer amounts");
+      });
+
+      it("Should confirm buy token offer", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+        await token.transfer(otherAccount, tokenAmount);
+
+        const balance_be4 = await token.balanceOf(owner.address);
+
+        await token.connect(otherAccount).approve(p2pdex.target, tokenAmount);
+
+        await p2pdex
+          .connect(otherAccount)
+          .completeOfferBuyTokens(0, tokenAmount);
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+
+        const balance_after = await token.balanceOf(owner.address);
+        expect(status).to.equal(2);
+
+        expect(balance_be4 + tokenAmount).to.equal(balance_after);
+      });
+
+      it("Shouldn't confirm buy token offer with invalid ID", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+
+        await expect(
+          p2pdex.connect(otherAccount).completeOfferBuyTokens(1, tokenAmount)
+        ).to.be.revertedWith("Invalid offer ID");
+      });
+
+      it("Shouldn't confirm buy token offer if is already confirmed", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+
+        await token.transfer(otherAccount, tokenAmount);
+        await token.connect(otherAccount).approve(p2pdex.target, tokenAmount);
+
+        await p2pdex
+          .connect(otherAccount)
+          .completeOfferBuyTokens(0, tokenAmount);
+        await expect(
+          p2pdex.connect(otherAccount).completeOfferBuyTokens(0, tokenAmount)
+        ).to.be.revertedWith("Offer is not active");
+      });
+
+      it("Shouldn't approve buy token offer without approve amount before", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+
+        await expect(
+          p2pdex.connect(otherAccount).completeOfferBuyTokens(0, tokenAmount)
+        ).to.be.revertedWith("ERC20: insufficient allowance");
+      });
+
+      it("Insufficient balance", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+        await token.connect(otherAccount).approve(p2pdex.target, tokenAmount);
+        await expect(
+          p2pdex.connect(otherAccount).completeOfferBuyTokens(0, tokenAmount)
+        ).to.be.revertedWith("ERC20: transfer amount exceeds balance");
+      });
+    });
+
+    it("Shouldn't confirm his own offert", async function () {
+      eth_amount = "0.1";
+      eth_amount_wei = ethers.parseEther(eth_amount);
+      await p2pdex
+        .connect(owner)
+        .createOfferBuyTokens({ value: eth_amount_wei });
+
+      [seller, tokenAmount, etherAmount, status] =
+        await p2pdex.getOfferBuyTokensById(0);
+      await token.connect(owner).approve(p2pdex.target, tokenAmount);
+      await expect(
+        p2pdex.connect(owner).completeOfferBuyTokens(0, tokenAmount)
+      ).to.be.revertedWith("Seller cannot buy their own offer");
+    });
+
+    describe("Testing cancel buy token offer", function () {
+      it("Should cancel buy tokken offert", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        await p2pdex.connect(owner).cancelOfferBuyTokens(0);
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+
+        expect(status).to.equal(0);
+      });
+
+      it("Should cancel one buy tokken offert", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        eth_amount = "0.05";
+        eth_amount_wei2 = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei2 });
+
+        await p2pdex.connect(owner).cancelOfferBuyTokens(0);
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(0);
+
+        expect(status).to.equal(0);
+
+        [seller, tokenAmount, etherAmount, status] =
+          await p2pdex.getOfferBuyTokensById(1);
+
+        expect(status).to.equal(1);
+      });
+
+      it("Shouldn't be able to cancel an offer not made by us. ", async function () {
+        eth_amount = "0.1";
+        eth_amount_wei = ethers.parseEther(eth_amount);
+        await p2pdex
+          .connect(owner)
+          .createOfferBuyTokens({ value: eth_amount_wei });
+
+        await expect(p2pdex.connect(otherAccount).cancelOfferBuyTokens(0)).to.be
+          .reverted;
       });
     });
   });
