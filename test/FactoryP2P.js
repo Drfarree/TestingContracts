@@ -6,7 +6,7 @@ const { ethers } = require("hardhat");
 const { eth } = require("web3");
 const P2PABI = require("./../ABIs/P2PABI.json");
 
-describe("Factor P2PDEX", function () {
+describe("Factory P2PDEX", function () {
   async function deployContractsFixture() {
     const [owner, otherAccount, otherAccount2] = await ethers.getSigners();
 
