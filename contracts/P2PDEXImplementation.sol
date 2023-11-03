@@ -158,9 +158,6 @@ contract TokenExchangeP2P {
         require(_offerId < offerEth.length, "Invalid offer ID");
         OfferToken storage offer = offerEth[_offerId];
         require(offer.status == OfferStatus.Active, "Offer is not active");
-        //uint256 tokenPrice = getTokenPriceFromLP();
-        //uint256 tokenPrice = 100000000;
-        //require(msg.value == offer.etherAmount, "Incorrect Ether value");
         require(_tokenAmount == offer.tokenAmount);
         require(offer.seller != msg.sender, "Seller cannot buy their own offer");
 
